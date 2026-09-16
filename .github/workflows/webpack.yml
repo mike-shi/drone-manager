@@ -24,10 +24,19 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      - run: npx ng build
+      # GitHub Pages 项目站点部署在 https://<user>.github.io/<repo>/ 下，
+      # 因此 base-href 必须带上仓库名，否则 index.html 里的资源会向站点根目录请求而 404。
+      - name: Build
+        env:
+          BASE_HREF: /${{ github.event.repository.name }}/
+        run: npx ng build --base-href="${BASE_HREF}"
+      # 刷新 / 直接访问子路由时，GitHub Pages 会落到 404.html，
+      # 用 index.html 兜底后由 Angular Router 接管前端路由。
+      - name: Add SPA fallback
+        run: cp dist/high-lower/index.html dist/high-lower/404.html
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: dist
+          path: dist/high-lower
 
   deploy:
     needs: build
