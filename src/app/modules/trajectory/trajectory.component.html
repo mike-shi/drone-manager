@@ -1,0 +1,302 @@
+<div class="page">
+  <div #viewerContainer class="cesium-container"></div>
+
+  <app-topbar
+    active="/trajectory"
+    searchPlaceholder="搜索无人机 / 设备ID / 航线"
+    [onlineCount]="onlineCount"
+    [alertCount]="alertCount"
+    (navigate)="navigate($event)"
+  ></app-topbar>
+
+  <!-- 顶部告警浮条 -->
+  <div class="alert-bar" *ngIf="topAlert as alert">
+    <div class="ab-icon">
+      <app-icon name="alert-triangle" [size]="12"></app-icon>
+    </div>
+    <div>
+      <div class="ab-text">
+        <b>{{ alert.droneName || alert.facilityName }}</b> {{ alert.message }}
+      </div>
+      <div class="ab-time mono">{{ alert.time | date: 'HH:mm:ss' }} · {{ alert.detail }}</div>
+    </div>
+    <div class="ab-action" (click)="ackAlert(alert.id, $event)">处置</div>
+  </div>
+
+  <!-- 左侧：机队列表 -->
+  <app-floating-panel
+    class="panel-fleet"
+    title="机队列表"
+    icon="drone"
+    [badge]="onlineCount + '/' + drones.length"
+    [width]="320"
+    [left]="16"
+    [top]="72"
+    [maxHeight]="680"
+  >
+    <div class="fleet-filter">
+      <div class="chip" [class.active]="filter === 'all'" (click)="setFilter('all')">
+        全部<span class="cnt">{{ drones.length }}</span>
+      </div>
+      <div class="chip" [class.active]="filter === 'online'" (click)="setFilter('online')">
+        在线<span class="cnt">{{ onlineCount }}</span>
+      </div>
+      <div class="chip" [class.active]="filter === 'alert'" (click)="setFilter('alert')">
+        告警<span class="cnt">{{ alertCount }}</span>
+      </div>
+      <div class="chip" [class.active]="filter === 'offline'" (click)="setFilter('offline')">
+        离线<span class="cnt">{{ drones.length - onlineCount }}</span>
+      </div>
+    </div>
+
+    <div class="fleet-summary">
+      <div class="fs-cell online">
+        <div class="fs-val">{{ onlineCount }}</div>
+        <div class="fs-lbl">在线</div>
+      </div>
+      <div class="fs-cell warn">
+        <div class="fs-val">{{ alertCount }}</div>
+        <div class="fs-lbl">告警</div>
+      </div>
+      <div class="fs-cell off">
+        <div class="fs-val">{{ lowBatteryCount }}</div>
+        <div class="fs-lbl">低电量</div>
+      </div>
+    </div>
+
+    <div class="fleet-list">
+      <ng-container *ngIf="filter === 'all' || filter === 'online' || filter === 'alert'">
+        <div class="section-label" *ngIf="flyingDrones.length">飞行中 · {{ flyingDrones.length }}</div>
+        <div
+          class="entity-item"
+          *ngFor="let d of flyingDrones"
+          [class.selected]="d.id === selectedDroneId"
+          (click)="selectDrone(d.id)"
+        >
+          <div class="ent-avatar" [ngStyle]="avatarStyle(d.status)">
+            <app-icon name="drone" [size]="16"></app-icon>
+            <span class="live-dot" [ngStyle]="dotStyle(d.status)"></span>
+          </div>
+          <div class="ent-info">
+            <div class="ent-name">
+              {{ d.name }}
+              <app-status-badge [status]="d.status">{{ statusLabel(d.status) }}</app-status-badge>
+            </div>
+            <div class="ent-meta">
+              {{ d.position.alt | number: '1.0-0' }}m · {{ d.velocity | number: '1.1-1' }}m/s · 电量 {{ d.battery }}%
+            </div>
+          </div>
+        </div>
+      </ng-container>
+
+      <ng-container *ngIf="filter === 'all' || filter === 'online' || filter === 'offline'">
+        <div class="section-label" *ngIf="standbyDrones.length">待飞 · {{ standbyDrones.length }}</div>
+        <div
+          class="entity-item"
+          *ngFor="let d of standbyDrones"
+          [class.selected]="d.id === selectedDroneId"
+          (click)="selectDrone(d.id)"
+        >
+          <div class="ent-avatar">
+            <app-icon name="drone" [size]="16"></app-icon>
+            <span class="live-dot" [ngStyle]="dotStyle(d.status)"></span>
+          </div>
+          <div class="ent-info">
+            <div class="ent-name">
+              {{ d.name }}
+              <app-status-badge [status]="d.status">{{ statusLabel(d.status) }}</app-status-badge>
+            </div>
+            <div class="ent-meta">
+              <ng-container *ngIf="d.status === 'warning'">起降场 {{ d.homeVertiportId }} · 充电 {{ d.battery }}%</ng-container>
+              <ng-container *ngIf="d.status === 'info'">起降场 {{ d.homeVertiportId }} · 电量 {{ d.battery }}%</ng-container>
+              <ng-container *ngIf="d.status === 'offline'">最后在线 {{ d.lastUpdate | date: 'HH:mm' }}</ng-container>
+            </div>
+          </div>
+        </div>
+      </ng-container>
+    </div>
+  </app-floating-panel>
+
+  <!-- 右侧：实时详情 -->
+  <app-floating-panel
+    class="panel-detail"
+    title="实时详情"
+    icon="activity"
+    badge="1Hz"
+    [width]="360"
+    [right]="16"
+    [top]="72"
+    [maxHeight]="680"
+  >
+    <ng-container *ngIf="selectedDrone as d">
+      <div class="detail-hero">
+        <div class="dh-top">
+          <div class="drone-icon" [ngStyle]="heroIconStyle(d.status)">
+            <app-icon name="drone" [size]="24"></app-icon>
+          </div>
+          <div style="flex:1">
+            <div class="dh-name">
+              {{ d.name }}
+              <app-status-badge [status]="d.status">{{ statusLabel(d.status) }}</app-status-badge>
+            </div>
+            <div class="dh-id mono">SN: {{ d.sn }} · {{ d.type }} · 巡检任务</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="telemetry-grid">
+        <div class="tele-cell">
+          <div class="tc-lbl">高度</div>
+          <div class="tc-val">{{ d.position.alt | number: '1.0-0' }}</div>
+          <div class="tc-unit">m AGL</div>
+        </div>
+        <div class="tele-cell">
+          <div class="tc-lbl">速度</div>
+          <div class="tc-val">{{ d.velocity | number: '1.1-1' }}</div>
+          <div class="tc-unit">m/s</div>
+        </div>
+        <div class="tele-cell">
+          <div class="tc-lbl">航向</div>
+          <div class="tc-val">{{ d.heading | number: '2.0-0' }}°</div>
+          <div class="tc-unit">NE</div>
+        </div>
+        <div class="tele-cell">
+          <div class="tc-lbl">爬升率</div>
+          <div class="tc-val">{{ d.climbRate > 0 ? '+' : '' }}{{ d.climbRate | number: '1.1-1' }}</div>
+          <div class="tc-unit">m/s</div>
+        </div>
+        <div class="tele-cell">
+          <div class="tc-lbl">温度</div>
+          <div class="tc-val">{{ d.temperature }}°</div>
+          <div class="tc-unit">℃</div>
+        </div>
+        <div class="tele-cell" [class.warn]="d.windSpeed > 7">
+          <div class="tc-lbl">风速</div>
+          <div class="tc-val">{{ d.windSpeed | number: '1.1-1' }}</div>
+          <div class="tc-unit">m/s</div>
+        </div>
+      </div>
+
+      <div class="battery-row">
+        <div class="br-top">
+          <span class="br-lbl">电池 · 4S 锂电</span>
+          <span class="br-val mono">{{ d.battery }}% · {{ batteryRemaining(d) }} 剩余</span>
+        </div>
+        <div class="battery-bar">
+          <div class="battery-fill" [class.warn]="d.battery < 50" [class.danger]="d.battery < 25" [style.width.%]="d.battery"></div>
+        </div>
+        <div class="battery-segments">
+          <span>0</span><span>25</span><span>50</span><span>75</span><span>100%</span>
+        </div>
+      </div>
+
+      <div class="signal-row">
+        <div class="signal-bars">
+          <i *ngFor="let i of [1, 2, 3, 4, 5]" [class.off]="i > signalLevel(d.signal)"></i>
+        </div>
+        <span class="sr-lbl">GNSS · {{ d.gnssSatellites }} 颗</span>
+        <span class="sr-val mono">{{ d.signal || '—' }} {{ d.signal ? 'dBm' : '' }}</span>
+      </div>
+
+      <div class="section-label" style="padding-top: 10px">航迹段</div>
+      <div class="track-segments">
+        <div class="track-seg selected">
+          <span class="ts-dot" style="background:var(--accent);box-shadow:0 0 6px var(--accent)"></span>
+          <div class="ts-info">
+            <div class="ts-name">实时航迹</div>
+            <div class="ts-meta">已飞 {{ trackDistance(getSelectedTrackPoints()) }} km · 用时 {{ trackDuration(getSelectedTrackPoints()) }}</div>
+          </div>
+          <span class="ts-time">{{ getSelectedTrackPoints().length ? (getSelectedTrackPoints()[0].time | date: 'HH:mm') : '—' }}</span>
+        </div>
+        <div class="track-seg">
+          <span class="ts-dot" style="background:var(--fg-muted)"></span>
+          <div class="ts-info">
+            <div class="ts-name">计划航线</div>
+            <div class="ts-meta">总长 6.8 km · 预计 14:52</div>
+          </div>
+          <span class="ts-time">—</span>
+        </div>
+      </div>
+
+      <div class="action-row">
+        <button class="btn">
+          <app-icon name="history" [size]="13"></app-icon>回放
+        </button>
+        <button class="btn accent" (click)="followDrone()">
+          <app-icon name="navigation" [size]="13"></app-icon>跟随
+        </button>
+        <button class="btn danger" (click)="returnHome()">
+          <app-icon name="home" [size]="13"></app-icon>返航
+        </button>
+      </div>
+    </ng-container>
+
+    <div *ngIf="!selectedDrone" class="empty-state">
+      <app-icon name="drone" [size]="32"></app-icon>
+      <div>请选择一架无人机</div>
+    </div>
+  </app-floating-panel>
+
+  <!-- 底部：告警 + 时间轴 -->
+  <footer class="bottombar">
+    <div class="bottom-split">
+      <div class="bottom-alerts">
+        <div class="ba-title">
+          实时告警
+          <span class="cnt" *ngIf="activeAlerts.length">{{ activeAlerts.length }}</span>
+        </div>
+        <div
+          class="alert-item"
+          *ngFor="let a of alerts"
+          (click)="a.droneId && selectDrone(a.droneId)"
+        >
+          <span class="ai-dot" [ngStyle]="alertDotStyle(a.level)"></span>
+          <span class="ai-text"><b>{{ a.droneName || a.facilityName }}</b> {{ a.message }}</span>
+          <span class="ai-time">{{ a.time | date: 'HH:mm' }}</span>
+        </div>
+      </div>
+
+      <div class="timeline-wrap">
+        <div class="timeline-head">
+          <div class="tl-left">
+            <button class="play-btn">
+              <app-icon name="play" [size]="13"></app-icon>
+            </button>
+            <div>
+              <div class="tl-title">航迹时间轴 · 实时追踪</div>
+              <div class="tl-time mono">{{ now | date: 'yyyy-MM-dd HH:mm:ss' }} · 实时</div>
+            </div>
+          </div>
+          <div class="tl-right">
+            <button class="btn">显示全部航迹</button>
+            <button class="btn accent">仅选中</button>
+            <button class="btn">
+              <app-icon name="download" [size]="13"></app-icon>导出
+            </button>
+          </div>
+        </div>
+        <div class="timeline-track">
+          <div class="timeline-ruler">
+            <div class="tick">14:30</div>
+            <div class="tick">14:32</div>
+            <div class="tick">14:34</div>
+            <div class="tick">14:36</div>
+            <div class="tick">14:38</div>
+            <div class="tick">14:40</div>
+          </div>
+          <div class="timeline-progress" style="width:68%"></div>
+          <div class="timeline-event" style="left:24%"></div>
+          <div class="timeline-event warn" style="left:55%"></div>
+          <div class="timeline-event" style="left:67%"></div>
+        </div>
+        <div class="timeline-legend">
+          <span><i style="background:var(--accent)"></i>DJI-M300</span>
+          <span><i style="background:var(--primary)"></i>eVTOL-X1</span>
+          <span><i style="background:var(--success)"></i>MAVIC-3E</span>
+          <span><i style="background:var(--danger)"></i>PHANTOM-7</span>
+          <span style="margin-left:auto" class="mono">{{ flyingDrones.length }} 条航迹 · 更新 1Hz</span>
+        </div>
+      </div>
+    </div>
+  </footer>
+</div>

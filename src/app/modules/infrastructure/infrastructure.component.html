@@ -1,0 +1,257 @@
+<div class="page">
+  <div #viewerContainer class="cesium-container"></div>
+
+  <app-topbar
+    active="/infrastructure"
+    searchPlaceholder="搜索设施 / 编号 / 区域"
+    [onlineCount]="okCount"
+    [alertCount]="faultCount"
+    (navigate)="navigate($event)"
+  ></app-topbar>
+
+  <!-- 左侧：设施列表 -->
+  <app-floating-panel
+    class="panel-infra"
+    title="基础设施"
+    icon="building"
+    [badge]="facilities.length.toString()"
+    [width]="320"
+    [left]="16"
+    [top]="72"
+    [maxHeight]="640"
+  >
+    <div class="type-filter">
+      <div
+        class="type-chip"
+        *ngFor="let t of typeFilters"
+        [class.active]="selectedType === t.type"
+        (click)="selectType(t.type)"
+      >
+        <div class="tc-icon">
+          <app-icon [name]="t.icon" [size]="14"></app-icon>
+        </div>
+        <div class="tc-text">
+          <div class="tc-name">{{ t.name }}</div>
+          <div class="tc-cnt">{{ facilityByType[t.type] || 0 }}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="infra-overview">
+      <div class="ov-cell ok"><div class="ov-val">{{ okCount }}</div><div class="ov-lbl">正常</div></div>
+      <div class="ov-cell busy"><div class="ov-val">{{ busyCount }}</div><div class="ov-lbl">繁忙</div></div>
+      <div class="ov-cell fault"><div class="ov-val">{{ faultCount }}</div><div class="ov-lbl">故障</div></div>
+      <div class="ov-cell"><div class="ov-val">{{ facilities.length }}</div><div class="ov-lbl">总计</div></div>
+    </div>
+
+    <div class="infra-list">
+      <ng-container *ngIf="selectedType === 'vertiport' || selectedType === 'all'">
+        <div class="section-label">起降场 · {{ vertiports.length }}</div>
+        <div
+          class="infra-item"
+          *ngFor="let f of vertiports"
+          [class.selected]="f.id === selectedId"
+          (click)="selectFacility(f.id)"
+        >
+          <div class="ii-icon" [ngStyle]="facilityIconStyle(f.type, f.status)">
+            <app-icon name="building" [size]="16"></app-icon>
+          </div>
+          <div class="ii-info">
+            <div class="ii-name">
+              {{ f.name }}
+              <app-status-badge [status]="f.status">{{ statusLabel(f.status) }}</app-status-badge>
+            </div>
+            <div class="ii-meta">{{ f.id }} · {{ getOccupiedCount(f) }}/{{ f.slots?.length }} 泊位 · {{ f.coverageRadius }}km 覆盖</div>
+          </div>
+        </div>
+      </ng-container>
+
+      <ng-container *ngIf="selectedType === 'charging' || selectedType === 'all'">
+        <div class="section-label">充电桩 · {{ chargers.length }}</div>
+        <div
+          class="infra-item"
+          *ngFor="let f of chargers"
+          [class.selected]="f.id === selectedId"
+          (click)="selectFacility(f.id)"
+        >
+          <div class="ii-icon" [ngStyle]="facilityIconStyle(f.type, f.status)">
+            <app-icon name="bolt" [size]="16"></app-icon>
+          </div>
+          <div class="ii-info">
+            <div class="ii-name">
+              {{ f.name }}
+              <app-status-badge [status]="f.status">{{ statusLabel(f.status) }}</app-status-badge>
+            </div>
+            <div class="ii-meta">{{ f.id }} · {{ f.availableSlots }}/{{ f.totalSlots }} 可用 · {{ f.power }}kW</div>
+          </div>
+        </div>
+      </ng-container>
+    </div>
+  </app-floating-panel>
+
+  <!-- 右侧：设施详情 -->
+  <app-floating-panel
+    class="panel-infra-detail"
+    title="设施详情"
+    icon="building"
+    badge="实时"
+    [width]="360"
+    [right]="16"
+    [top]="72"
+    [maxHeight]="640"
+  >
+    <ng-container *ngIf="selectedFacility as f">
+      <div class="infra-hero">
+        <div class="ih-top">
+          <div class="ih-icon" [ngStyle]="facilityIconStyle(f.type, f.status)">
+            <app-icon name="building" [size]="26"></app-icon>
+          </div>
+          <div style="flex:1">
+            <div class="ih-name">
+              {{ f.name }}
+              <app-status-badge [status]="f.status">{{ statusLabel(f.status) }}</app-status-badge>
+            </div>
+            <div class="ih-id mono">{{ f.id }} · {{ f.position.lng | number: '1.0-4' }}, {{ f.position.lat | number: '1.0-4' }} · 类型 A 级</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 容量环 -->
+      <div class="capacity-ring" *ngIf="f.slots">
+        <svg class="ring-svg" viewBox="0 0 80 80">
+          <circle class="ring-bg" cx="40" cy="40" r="32" fill="none" stroke-width="6"/>
+          <circle
+            class="ring-fg"
+            cx="40" cy="40" r="32" fill="none" stroke-width="6"
+            [attr.stroke-dasharray]="201"
+            [attr.stroke-dashoffset]="getCapacityStroke(f)"
+            stroke-linecap="round"
+            transform="rotate(-90 40 40)"
+          />
+          <text class="ring-text" x="40" y="42" text-anchor="middle">{{ getOccupiedCount(f) }}/{{ f.slots.length }}</text>
+          <text class="ring-sub" x="40" y="54" text-anchor="middle">泊位</text>
+        </svg>
+        <div class="cap-info">
+          <div class="ci-row busy"><span>占用中</span><span class="ci-val">{{ getOccupiedCount(f) }}</span></div>
+          <div class="ci-row idle"><span>空闲</span><span class="ci-val">{{ getIdleCount(f) }}</span></div>
+          <div class="ci-row maint"><span>维护</span><span class="ci-val">{{ getMaintCount(f) }}</span></div>
+          <div class="ci-row divider">
+            <span class="muted">利用率</span>
+            <span class="ci-val" [style.color]="f.utilization && f.utilization > 60 ? 'var(--warning)' : 'var(--success)'">{{ f.utilization }}%</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 泊位网格 -->
+      <div class="slots-wrap" *ngIf="f.slots">
+        <div class="cs-title">泊位状态 <span class="mono subtle">{{ f.slots.length }} 位</span></div>
+        <div class="slots-grid">
+          <div class="slot {{ slotClass(s) }}" *ngFor="let s of f.slots">
+            {{ s.id | number: '2.0-0' }}
+            <span class="slot-pulse" *ngIf="s.status === 'fault'"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 24h 起降柱状 -->
+      <div class="coverage-section" *ngIf="f.hourlyCounts">
+        <div class="cs-title">
+          <span>24h 起降架次</span>
+          <span class="mono">今日 {{ f.todayCount }} 次</span>
+        </div>
+        <div class="coverage-bars">
+          <div
+            class="cov-bar"
+            *ngFor="let c of f.hourlyCounts; let i = index"
+            [class.warn]="c > 18"
+            [style.height.%]="c > 0 ? (c / 30) * 100 : 4"
+          ></div>
+        </div>
+        <div class="cov-labels">
+          <span>00</span><span>02</span><span>04</span><span>06</span><span>08</span><span>10</span>
+          <span>12</span><span>14</span><span>16</span><span>18</span><span>20</span><span>22</span>
+        </div>
+      </div>
+
+      <!-- 基础信息 -->
+      <div class="info-section">
+        <div class="cs-title">基础信息</div>
+        <div class="info-rows">
+          <div class="info-row"><span class="muted">坐标</span><span class="mono">{{ f.position.lng | number: '1.0-4' }}, {{ f.position.lat | number: '1.0-4' }}</span></div>
+          <div class="info-row"><span class="muted">高程</span><span class="mono">{{ f.position.alt | number: '1.0-1' }} m</span></div>
+          <div class="info-row" *ngIf="f.coverageRadius"><span class="muted">覆盖半径</span><span class="mono">{{ f.coverageRadius }} km</span></div>
+          <div class="info-row" *ngIf="f.maxThroughput"><span class="muted">最大起降</span><span class="mono">{{ f.maxThroughput }} 架/小时</span></div>
+          <div class="info-row" *ngIf="f.operationHours"><span class="muted">运营时间</span><span class="mono">{{ f.operationHours }}</span></div>
+          <div class="info-row" *ngIf="f.owner"><span class="muted">归属单位</span><span>{{ f.owner }}</span></div>
+        </div>
+      </div>
+
+      <div class="action-row">
+        <button class="btn" (click)="locateFacility()">
+          <app-icon name="pin" [size]="13"></app-icon>定位
+        </button>
+        <button class="btn accent">
+          <app-icon name="chart" [size]="13"></app-icon>分析
+        </button>
+        <button class="btn">
+          <app-icon name="edit" [size]="13"></app-icon>编辑
+        </button>
+      </div>
+    </ng-container>
+  </app-floating-panel>
+
+  <!-- 底部：设施台账 -->
+  <footer class="bottombar">
+    <div class="infra-table-wrap">
+      <div class="table-head">
+        <div class="th-title">设施清单 · <b>起降场 {{ vertiports.length }}</b> 项</div>
+        <div class="th-actions">
+          <button class="btn">
+            <app-icon name="download" [size]="13"></app-icon>导出
+          </button>
+          <button class="btn primary">
+            <app-icon name="plus" [size]="13"></app-icon>新增设施
+          </button>
+        </div>
+      </div>
+      <div class="infra-table">
+        <table>
+          <thead>
+            <tr>
+              <th>编号</th>
+              <th>名称</th>
+              <th>类型</th>
+              <th>状态</th>
+              <th>泊位占用</th>
+              <th>利用率</th>
+              <th>覆盖半径</th>
+              <th>今日起降</th>
+              <th>区域</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              *ngFor="let f of vertiports"
+              [class.selected]="f.id === selectedId"
+              (click)="selectFacility(f.id)"
+            >
+              <td>{{ f.id }}</td>
+              <td class="name-cell">{{ f.name }}</td>
+              <td>A 级</td>
+              <td>
+                <span class="mini-status" [style.color]="'var(--' + f.status + ')'">
+                  <span class="dot" [style.background]="'var(--' + f.status + ')'"></span>{{ statusLabel(f.status) }}
+                </span>
+              </td>
+              <td>{{ getOccupiedCount(f) }}/{{ f.slots?.length }}</td>
+              <td [style.color]="f.utilization && f.utilization > 60 ? 'var(--warning)' : 'var(--success)'">{{ f.utilization }}%</td>
+              <td>{{ f.coverageRadius }} km</td>
+              <td>{{ f.todayCount }}</td>
+              <td>{{ f.owner }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </footer>
+</div>

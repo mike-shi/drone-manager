@@ -1,0 +1,250 @@
+<div class="page">
+  <!-- Cesium 容器 -->
+  <div #viewerContainer class="cesium-container"></div>
+
+  <!-- 顶栏 -->
+  <app-topbar
+    active="/scene"
+    searchPlaceholder="搜索地点 / 坐标 / 实体ID"
+    [onlineCount]="128"
+    [alertCount]="3"
+    (navigate)="navigate($event)"
+  ></app-topbar>
+
+  <!-- 左侧：图层管理 -->
+  <app-floating-panel
+    class="panel-layers"
+    title="图层管理"
+    icon="layers"
+    [badge]="enabledCount + ' / ' + layers.length"
+    [width]="300"
+    [left]="16"
+    [top]="72"
+    [maxHeight]="680"
+  >
+    <div class="layer-groups">
+      <div class="layer-group" *ngFor="let group of layerGroups">
+        <div class="layer-group-title">
+          {{ group.title }}
+          <span class="group-count">{{ group.layers.length }}</span>
+        </div>
+        <ng-container *ngFor="let layer of group.layers">
+          <div
+            class="layer-item"
+            [class.on]="layer.enabled"
+            (click)="toggleLayer(layer.id, $event)"
+          >
+            <div class="layer-icon">
+              <app-icon [name]="layer.icon" [size]="15"></app-icon>
+            </div>
+            <div class="layer-info">
+              <div class="layer-name">{{ layer.name }}</div>
+              <div class="layer-meta">{{ layer.meta }}</div>
+            </div>
+            <div class="toggle"></div>
+          </div>
+          <div class="opacity-row" *ngIf="layer.enabled">
+            <span>透明度</span>
+            <div class="opacity-bar">
+              <div class="opacity-fill" [style.width.%]="layer.opacity"></div>
+              <div class="opacity-knob" [style.left.%]="layer.opacity"></div>
+            </div>
+            <span class="opacity-val">{{ layer.opacity }}</span>
+          </div>
+        </ng-container>
+      </div>
+    </div>
+  </app-floating-panel>
+
+  <!-- 右侧：视角控制 -->
+  <app-floating-panel
+    class="panel-view"
+    title="视角控制"
+    icon="compass"
+    [width]="240"
+    [right]="16"
+    [top]="72"
+  >
+    <div class="view-presets">
+      <div
+        class="view-preset"
+        [class.active]="selectedPreset === 'top'"
+        (click)="selectPreset('top')"
+      >
+        <app-icon name="globe" [size]="22"></app-icon>
+        <div class="vp-name">俯视</div>
+        <div class="vp-en">TOP</div>
+      </div>
+      <div
+        class="view-preset"
+        [class.active]="selectedPreset === 'eye'"
+        (click)="selectPreset('eye')"
+      >
+        <app-icon name="eye" [size]="22"></app-icon>
+        <div class="vp-name">平视</div>
+        <div class="vp-en">EYE</div>
+      </div>
+      <div
+        class="view-preset"
+        [class.active]="selectedPreset === 'roam'"
+        (click)="selectPreset('roam')"
+      >
+        <app-icon name="navigation" [size]="22"></app-icon>
+        <div class="vp-name">漫游</div>
+        <div class="vp-en">ROAM</div>
+      </div>
+      <div
+        class="view-preset"
+        [class.active]="selectedPreset === 'north'"
+        (click)="selectPreset('north')"
+      >
+        <app-icon name="compass" [size]="22"></app-icon>
+        <div class="vp-name">正北</div>
+        <div class="vp-en">NORTH</div>
+      </div>
+    </div>
+
+    <div class="compass">
+      <span class="dir-n">N</span>
+      <span class="dir-s">S</span>
+      <span class="dir-e">E</span>
+      <span class="dir-w">W</span>
+      <div class="needle" [style.transform]="'translate(-50%, -100%) rotate(' + compassRotation + 'deg)'"></div>
+      <div class="center-dot"></div>
+    </div>
+    <div class="heading-val">
+      航向 <b>{{ heading }}°</b> · 俯仰 <b>{{ pitch }}°</b>
+    </div>
+
+    <div class="altitude-control">
+      <div class="ac-label">
+        <span>视图高度</span>
+        <span class="ac-val">{{ altitudeKm }}</span>
+      </div>
+      <div class="alt-bar">
+        <div class="alt-fill" [style.width.%]="altPercent"></div>
+        <div class="alt-knob" [style.left.%]="altPercent"></div>
+      </div>
+      <div class="alt-ticks">
+        <span>50m</span><span>1km</span><span>10km</span><span>100km</span>
+      </div>
+    </div>
+
+    <div class="roam-btn-wrap">
+      <button class="btn accent roam-btn">
+        <app-icon name="navigation" [size]="13"></app-icon>
+        漫游飞行
+      </button>
+    </div>
+  </app-floating-panel>
+
+  <!-- 左下：坐标信息 -->
+  <div class="panel panel-coords">
+    <div class="coord-block" *ngIf="coord; else noCoord">
+      <span class="cl">经度 LNG</span>
+      <span class="cv">{{ coord.lng.toFixed(4) }}°E</span>
+    </div>
+    <ng-template #noCoord>
+      <div class="coord-block">
+        <span class="cl">经度 LNG</span>
+        <span class="cv subtle">—</span>
+      </div>
+    </ng-template>
+    <div class="coord-sep"></div>
+    <div class="coord-block" *ngIf="coord; else noCoord2">
+      <span class="cl">纬度 LAT</span>
+      <span class="cv">{{ coord.lat.toFixed(4) }}°N</span>
+    </div>
+    <ng-template #noCoord2>
+      <div class="coord-block">
+        <span class="cl">纬度 LAT</span>
+        <span class="cv subtle">—</span>
+      </div>
+    </ng-template>
+    <div class="coord-sep"></div>
+    <div class="coord-block">
+      <span class="cl">高程 ALT</span>
+      <span class="cv">{{ coord ? (coord.alt | number: '1.0-1') + ' m' : '—' }}</span>
+    </div>
+    <div class="coord-sep"></div>
+    <div class="scale-bar">
+      <div class="bar"></div>
+      <span>500 m</span>
+    </div>
+  </div>
+
+  <!-- 右下：工具栏 -->
+  <div class="panel panel-tools">
+    <button class="btn-icon-only" [class.active]="activeTool === 'pan'" (click)="setTool('pan')" title="平移">
+      <app-icon name="pan" [size]="15"></app-icon>
+    </button>
+    <button class="btn-icon-only" [class.active]="activeTool === 'zoom'" (click)="setTool('zoom')" title="缩放">
+      <app-icon name="zoom" [size]="15"></app-icon>
+    </button>
+    <button class="btn-icon-only" [class.active]="activeTool === 'rotate'" (click)="setTool('rotate')" title="旋转">
+      <app-icon name="rotate" [size]="15"></app-icon>
+    </button>
+    <div class="tool-sep"></div>
+    <button class="btn-icon-only" (click)="setTool('ruler')" title="测量距离">
+      <app-icon name="ruler" [size]="15"></app-icon>
+    </button>
+    <button class="btn-icon-only" (click)="setTool('area')" title="测量面积">
+      <app-icon name="area" [size]="15"></app-icon>
+    </button>
+    <button class="btn-icon-only" (click)="setTool('eye')" title="通视分析">
+      <app-icon name="eye" [size]="15"></app-icon>
+    </button>
+    <div class="tool-sep"></div>
+    <button class="btn-icon-only" title="截图">
+      <app-icon name="camera" [size]="15"></app-icon>
+    </button>
+    <button class="btn-icon-only" title="全屏">
+      <app-icon name="fullscreen" [size]="15"></app-icon>
+    </button>
+  </div>
+
+  <!-- 底部：时间轴 -->
+  <footer class="bottombar">
+    <div class="timeline-wrap">
+      <div class="timeline-head">
+        <div class="tl-left">
+          <button class="play-btn">
+            <app-icon name="play" [size]="13"></app-icon>
+          </button>
+          <div>
+            <div class="tl-title">时间轴 · 历史回放</div>
+            <div class="tl-time mono">2026-09-16 14:32:08 → 14:38:42</div>
+          </div>
+        </div>
+        <div class="tl-right">
+          <span class="muted" style="font-size:11px">倍速</span>
+          <button class="btn">1x</button>
+          <button class="btn">2x</button>
+          <button class="btn accent">4x</button>
+          <button class="btn">实时</button>
+        </div>
+      </div>
+      <div class="timeline-track">
+        <div class="timeline-ruler">
+          <div class="tick">14:30</div>
+          <div class="tick">14:32</div>
+          <div class="tick">14:34</div>
+          <div class="tick">14:36</div>
+          <div class="tick">14:38</div>
+          <div class="tick">14:40</div>
+        </div>
+        <div class="timeline-progress" style="width:55%"></div>
+        <div class="timeline-event" style="left:18%"></div>
+        <div class="timeline-event warn" style="left:38%"></div>
+        <div class="timeline-event info" style="left:62%"></div>
+        <div class="timeline-event" style="left:81%"></div>
+      </div>
+      <div class="timeline-legend">
+        <span><i style="background:var(--danger)"></i>告警</span>
+        <span><i style="background:var(--warning)"></i>预警</span>
+        <span><i style="background:var(--info)"></i>事件</span>
+        <span style="margin-left:auto" class="mono">实时渲染</span>
+      </div>
+    </div>
+  </footer>
+</div>
