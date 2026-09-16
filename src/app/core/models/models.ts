@@ -3,23 +3,15 @@
  */
 export type Status = 'success' | 'warning' | 'danger' | 'info' | 'offline';
 
-/**
- * 经纬度高程
- */
 export interface LatLngAlt {
   lng: number;
   lat: number;
   alt: number;
 }
 
-/**
- * 无人机/飞行器类型
- */
 export type DroneType = 'multirotor' | 'fixedwing' | 'vtol' | 'helicopter';
 
-/**
- * 无人机实体
- */
+
 export interface Drone {
   id: string;
   name: string;
